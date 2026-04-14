@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from .models import Activity, Company, Contact, Tag
 from .serializers import ActivitySerializer, CompanySerializer, ContactSerializer, TagSerializer
+from crm_service.core.utils.pagination import paginate_qs
 
 
 @api_view(["GET", "POST"])
@@ -12,13 +13,23 @@ def contact_list_create(request):
     corporate_id = request.corporate_id
     if request.method == "GET":
         qs = Contact.objects.filter(corporate_id=corporate_id).select_related("company")
-        search = request.GET.get("search")
+        search = request.GET.get("search", "").strip()
         if search:
-            qs = qs.filter(Q(first_name__icontains=search) | Q(last_name__icontains=search) | Q(email__icontains=search))
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone__icontains=search)
+            )
         company_id = request.GET.get("company")
         if company_id:
             qs = qs.filter(company_id=company_id)
-        return Response(ContactSerializer(qs, many=True).data)
+        contact_type = request.GET.get("type")
+        if contact_type:
+            qs = qs.filter(contact_type=contact_type)
+        qs = qs.order_by("-created_at")
+        page_qs, meta = paginate_qs(qs, request)
+        return Response({"results": ContactSerializer(page_qs, many=True).data, **meta})
     s = ContactSerializer(data=request.data)
     if s.is_valid():
         s.save(corporate_id=corporate_id, created_by=request.user_id)

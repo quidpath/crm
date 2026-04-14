@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from .models import Lead, LeadSource, Opportunity, PipelineStage
 from .serializers import LeadSerializer, LeadSourceSerializer, OpportunitySerializer, PipelineStageSerializer
+from crm_service.core.utils.pagination import paginate_qs
 
 
 @api_view(["GET", "POST"])
@@ -47,10 +48,12 @@ def lead_list_create(request):
         state = request.GET.get("state")
         if state:
             qs = qs.filter(state=state)
-        search = request.GET.get("search")
+        search = request.GET.get("search", "").strip()
         if search:
-            qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search))
-        return Response(LeadSerializer(qs, many=True).data)
+            qs = qs.filter(Q(name__icontains=search) | Q(email__icontains=search) | Q(phone__icontains=search))
+        qs = qs.order_by("-created_at")
+        page_qs, meta = paginate_qs(qs, request)
+        return Response({"results": LeadSerializer(page_qs, many=True).data, **meta})
     s = LeadSerializer(data=request.data)
     if s.is_valid():
         s.save(corporate_id=cid, created_by=request.user_id)
@@ -88,7 +91,15 @@ def opportunity_list_create(request):
         assigned = request.GET.get("assigned_to")
         if assigned:
             qs = qs.filter(assigned_to=assigned)
-        return Response(OpportunitySerializer(qs, many=True).data)
+        search = request.GET.get("search", "").strip()
+        if search:
+            qs = qs.filter(Q(title__icontains=search) | Q(contact__first_name__icontains=search) | Q(contact__last_name__icontains=search))
+        status_filter = request.GET.get("status")
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        qs = qs.order_by("-created_at")
+        page_qs, meta = paginate_qs(qs, request)
+        return Response({"results": OpportunitySerializer(page_qs, many=True).data, **meta})
     s = OpportunitySerializer(data=request.data)
     if s.is_valid():
         s.save(corporate_id=cid, created_by=request.user_id)
@@ -114,15 +125,121 @@ def opportunity_detail(request, pk):
 
 @api_view(["GET"])
 def pipeline_overview(request):
-    """Pipeline summary by stage — for Kanban/funnel view."""
+    """
+    CRM Dashboard Summary with period-over-period comparisons.
+    Returns metrics for contacts, deals, pipeline value, and conversion rate.
+    """
+    from datetime import datetime, timedelta
+    from django.utils import timezone
+    from crm_service.contacts.models import Contact
+    
     cid = request.corporate_id
+    
+    # Current period (this month)
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # Previous period (last month)
+    if month_start.month == 1:
+        prev_month_start = month_start.replace(year=month_start.year - 1, month=12)
+    else:
+        prev_month_start = month_start.replace(month=month_start.month - 1)
+    prev_month_end = month_start - timedelta(seconds=1)
+    
+    # Helper functions for calculations
+    def calc_change(current, previous):
+        if previous > 0:
+            return round(float(((current - previous) / previous) * 100), 1)
+        return 0.0
+    
+    def get_trend(change):
+        if change > 0:
+            return "up"
+        elif change < 0:
+            return "down"
+        return "neutral"
+    
+    # Total Contacts
+    total_contacts = Contact.objects.filter(corporate_id=cid).count()
+    prev_contacts = Contact.objects.filter(
+        corporate_id=cid,
+        created_at__lt=month_start
+    ).count()
+    contacts_change = calc_change(total_contacts, prev_contacts)
+    
+    # Total Deals (Opportunities)
+    total_deals = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='open'
+    ).count()
+    prev_deals = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='open',
+        created_at__lt=month_start
+    ).count()
+    deals_change = calc_change(total_deals, prev_deals)
+    
+    # Pipeline Value
+    pipeline_value = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='open'
+    ).aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
+    
+    prev_pipeline_value = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='open',
+        created_at__lt=month_start
+    ).aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
+    
+    pipeline_change = calc_change(float(pipeline_value), float(prev_pipeline_value))
+    
+    # Won Deals This Month
+    won_deals_this_month = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='won',
+        updated_at__gte=month_start
+    ).count()
+    
+    # Conversion Rate (won deals / total deals)
+    total_closed_deals = Opportunity.objects.filter(
+        corporate_id=cid,
+        status__in=['won', 'lost']
+    ).count()
+    won_deals_all = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='won'
+    ).count()
+    conversion_rate = round((won_deals_all / total_closed_deals * 100), 1) if total_closed_deals > 0 else 0
+    
+    # Previous conversion rate
+    prev_closed_deals = Opportunity.objects.filter(
+        corporate_id=cid,
+        status__in=['won', 'lost'],
+        updated_at__lt=month_start
+    ).count()
+    prev_won_deals = Opportunity.objects.filter(
+        corporate_id=cid,
+        status='won',
+        updated_at__lt=month_start
+    ).count()
+    prev_conversion_rate = round((prev_won_deals / prev_closed_deals * 100), 1) if prev_closed_deals > 0 else 0
+    conversion_change = calc_change(conversion_rate, prev_conversion_rate)
+    
+    # Active Campaigns
+    from crm_service.campaigns.models import Campaign
+    active_campaigns = Campaign.objects.filter(
+        corporate_id=cid,
+        status='active'
+    ).count()
+    
+    # Pipeline stages breakdown
     stages = PipelineStage.objects.filter(corporate_id=cid).annotate(
         count=Count("opportunities"),
         total_value=Sum("opportunities__expected_revenue"),
     )
-    data = []
+    stages_data = []
     for s in stages:
-        data.append({
+        stages_data.append({
             "stage_id": str(s.id),
             "stage_name": s.name,
             "sequence": s.sequence,
@@ -130,7 +247,34 @@ def pipeline_overview(request):
             "total_value": str(s.total_value or 0),
             "probability": str(s.probability),
         })
-    grand_total = Opportunity.objects.filter(
-        corporate_id=cid
-    ).aggregate(t=Sum("expected_revenue"))["t"] or Decimal("0")
-    return Response({"stages": data, "grand_total": str(grand_total)})
+    
+    return Response({
+        # Summary metrics with comparisons
+        "total_contacts": total_contacts,
+        "total_contacts_previous": prev_contacts,
+        "total_contacts_change": contacts_change,
+        "total_contacts_trend": get_trend(contacts_change),
+        
+        "total_deals": total_deals,
+        "total_deals_previous": prev_deals,
+        "total_deals_change": deals_change,
+        "total_deals_trend": get_trend(deals_change),
+        
+        "pipeline_value": float(pipeline_value),
+        "pipeline_value_previous": float(prev_pipeline_value),
+        "pipeline_value_change": pipeline_change,
+        "pipeline_value_trend": get_trend(pipeline_change),
+        
+        "won_deals_this_month": won_deals_this_month,
+        
+        "conversion_rate": conversion_rate,
+        "conversion_rate_previous": prev_conversion_rate,
+        "conversion_rate_change": conversion_change,
+        "conversion_rate_trend": get_trend(conversion_change),
+        
+        "active_campaigns": active_campaigns,
+        
+        # Pipeline stages breakdown
+        "stages": stages_data,
+        "grand_total": str(pipeline_value),
+    })
