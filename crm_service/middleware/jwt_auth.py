@@ -6,7 +6,7 @@ from crm_service.services.user_cache_service import UserCacheService
 
 logger = logging.getLogger(__name__)
 
-SERVICE_TO_SERVICE_PATHS = ["/api/crm/contacts/", "/api/crm/sales/orders/"]
+SERVICE_TO_SERVICE_PATHS = ["/api/crm/"]
 
 
 class JWTAuthenticationMiddleware:
