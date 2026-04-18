@@ -15,7 +15,6 @@ if [ -f .env ]; then
   done < .env
 fi
 PYTHON=$(command -v python3 || command -v python)
-$PYTHON manage.py makemigrations --noinput
 $PYTHON manage.py migrate --noinput
 $PYTHON manage.py collectstatic --noinput
 $PYTHON manage.py createsuperuser --noinput || true
