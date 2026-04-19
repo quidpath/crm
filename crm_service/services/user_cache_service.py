@@ -19,7 +19,7 @@ class UserCacheService:
                 return None
                 
             resp = requests.get(
-                f"{settings.ERP_BACKEND_URL}/api/internal/users/{user_id}/",
+                f"{settings.ERP_BACKEND_URL}/api/auth/users/{user_id}/",
                 headers={"X-Service-Key": service_key}, 
                 timeout=5,
             )
@@ -45,7 +45,7 @@ class UserCacheService:
                 return None
                 
             resp = requests.get(
-                f"{settings.ERP_BACKEND_URL}/api/internal/corporates/{corporate_id}/",
+                f"{settings.ERP_BACKEND_URL}/api/auth/corporates/{corporate_id}/",
                 headers={"X-Service-Key": service_key}, 
                 timeout=5,
             )
