@@ -232,7 +232,7 @@ def pipeline_overview(request):
     from crm_service.campaigns.models import Campaign
     active_campaigns = Campaign.objects.filter(
         corporate_id=cid,
-        status='active'
+        state='active'
     ).count()
     
     # Pipeline stages breakdown
