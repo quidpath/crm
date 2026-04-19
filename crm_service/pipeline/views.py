@@ -94,9 +94,6 @@ def opportunity_list_create(request):
         search = request.GET.get("search", "").strip()
         if search:
             qs = qs.filter(Q(title__icontains=search) | Q(contact__first_name__icontains=search) | Q(contact__last_name__icontains=search))
-        status_filter = request.GET.get("status")
-        if status_filter:
-            qs = qs.filter(status=status_filter)
         qs = qs.order_by("-created_at")
         page_qs, meta = paginate_qs(qs, request)
         return Response({"results": OpportunitySerializer(page_qs, many=True).data, **meta})
@@ -167,27 +164,31 @@ def pipeline_overview(request):
     ).count()
     contacts_change = calc_change(total_contacts, prev_contacts)
     
-    # Total Deals (Opportunities)
+    # Total Deals (Opportunities) - open deals are those not won or lost
     total_deals = Opportunity.objects.filter(
         corporate_id=cid,
-        status='open'
+        stage__is_won=False,
+        stage__is_lost=False
     ).count()
     prev_deals = Opportunity.objects.filter(
         corporate_id=cid,
-        status='open',
+        stage__is_won=False,
+        stage__is_lost=False,
         created_at__lt=month_start
     ).count()
     deals_change = calc_change(total_deals, prev_deals)
     
-    # Pipeline Value
+    # Pipeline Value - only open deals
     pipeline_value = Opportunity.objects.filter(
         corporate_id=cid,
-        status='open'
+        stage__is_won=False,
+        stage__is_lost=False
     ).aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
     
     prev_pipeline_value = Opportunity.objects.filter(
         corporate_id=cid,
-        status='open',
+        stage__is_won=False,
+        stage__is_lost=False,
         created_at__lt=month_start
     ).aggregate(total=Sum('expected_revenue'))['total'] or Decimal('0')
     
@@ -196,30 +197,32 @@ def pipeline_overview(request):
     # Won Deals This Month
     won_deals_this_month = Opportunity.objects.filter(
         corporate_id=cid,
-        status='won',
+        stage__is_won=True,
         updated_at__gte=month_start
     ).count()
     
-    # Conversion Rate (won deals / total deals)
+    # Conversion Rate (won deals / total closed deals)
     total_closed_deals = Opportunity.objects.filter(
-        corporate_id=cid,
-        status__in=['won', 'lost']
+        corporate_id=cid
+    ).filter(
+        Q(stage__is_won=True) | Q(stage__is_lost=True)
     ).count()
     won_deals_all = Opportunity.objects.filter(
         corporate_id=cid,
-        status='won'
+        stage__is_won=True
     ).count()
     conversion_rate = round((won_deals_all / total_closed_deals * 100), 1) if total_closed_deals > 0 else 0
     
     # Previous conversion rate
     prev_closed_deals = Opportunity.objects.filter(
         corporate_id=cid,
-        status__in=['won', 'lost'],
         updated_at__lt=month_start
+    ).filter(
+        Q(stage__is_won=True) | Q(stage__is_lost=True)
     ).count()
     prev_won_deals = Opportunity.objects.filter(
         corporate_id=cid,
-        status='won',
+        stage__is_won=True,
         updated_at__lt=month_start
     ).count()
     prev_conversion_rate = round((prev_won_deals / prev_closed_deals * 100), 1) if prev_closed_deals > 0 else 0
