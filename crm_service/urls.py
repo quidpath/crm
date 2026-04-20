@@ -8,4 +8,5 @@ urlpatterns = [
     path("api/crm/pipeline/", include("crm_service.pipeline.urls")),
     path("api/crm/campaigns/", include("crm_service.campaigns.urls")),
     path("api/crm/sales/", include("crm_service.sales.urls")),
+    path("api/crm/product-catalog/", include("crm_service.crm.urls_product")),  # Product query endpoints
 ]
