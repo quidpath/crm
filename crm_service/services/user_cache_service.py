@@ -13,9 +13,10 @@ class UserCacheService:
         if cached:
             return cached
         try:
-            service_key = getattr(settings, 'CRM_SERVICE_SECRET', '')
+            # Use ERP_SERVICE_SECRET for authentication with accounting service
+            service_key = getattr(settings, 'ERP_SERVICE_SECRET', '') or getattr(settings, 'CRM_SERVICE_SECRET', '')
             if not service_key:
-                logger.error("CRM_SERVICE_SECRET not configured")
+                logger.error("ERP_SERVICE_SECRET not configured")
                 return None
                 
             resp = requests.get(
@@ -39,9 +40,10 @@ class UserCacheService:
         if cached:
             return cached
         try:
-            service_key = getattr(settings, 'CRM_SERVICE_SECRET', '')
+            # Use ERP_SERVICE_SECRET for authentication with accounting service
+            service_key = getattr(settings, 'ERP_SERVICE_SECRET', '') or getattr(settings, 'CRM_SERVICE_SECRET', '')
             if not service_key:
-                logger.error("CRM_SERVICE_SECRET not configured")
+                logger.error("ERP_SERVICE_SECRET not configured")
                 return None
                 
             resp = requests.get(
