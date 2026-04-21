@@ -17,5 +17,12 @@ fi
 PYTHON=$(command -v python3 || command -v python)
 $PYTHON manage.py migrate --noinput
 $PYTHON manage.py collectstatic --noinput
-$PYTHON manage.py createsuperuser --noinput || true
+
+echo "Creating superuser..."
+if [ -n "${DJANGO_SUPERUSER_USERNAME:-}" ] && [ -n "${DJANGO_SUPERUSER_EMAIL:-}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]; then
+  $PYTHON manage.py createsuperuser --noinput --username "$DJANGO_SUPERUSER_USERNAME" --email "$DJANGO_SUPERUSER_EMAIL" || echo "Superuser already exists"
+else
+  echo "Skipping superuser creation - environment variables not set"
+fi
+
 exec gunicorn crm_service.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${WORKERS:-2} --timeout 120
