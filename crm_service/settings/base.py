@@ -69,10 +69,14 @@ DATABASES = {
 }
 
 JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
-ERP_BACKEND_URL = os.environ.get("ERP_BACKEND_URL", "http://django-backend:8000")
-INVENTORY_SERVICE_URL = os.environ.get("INVENTORY_SERVICE_URL", "http://inventory-backend:8000")
-POS_SERVICE_URL = os.environ.get("POS_SERVICE_URL", "http://pos-backend:8000")
-HRM_SERVICE_URL = os.environ.get("HRM_SERVICE_URL", "http://hrm-backend:8000")
+
+# Service URLs for integration - set in environment-specific settings (stage.py, prod.py)
+ERP_BACKEND_URL = os.environ.get("ERP_BACKEND_URL")
+INVENTORY_SERVICE_URL = os.environ.get("INVENTORY_SERVICE_URL")
+POS_SERVICE_URL = os.environ.get("POS_SERVICE_URL")
+HRM_SERVICE_URL = os.environ.get("HRM_SERVICE_URL")
+PROJECTS_SERVICE_URL = os.environ.get("PROJECTS_SERVICE_URL")
+
 # Service authentication - own secret
 CRM_SERVICE_SECRET = os.environ.get("CRM_SERVICE_SECRET", "")
 # Cross-service secrets (used when calling other services)
